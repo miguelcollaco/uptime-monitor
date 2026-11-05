@@ -11,6 +11,16 @@
     "not_found_handling": "single-page-application"
   },
 
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "uptime",
+      // Replace with the id printed by `npx wrangler d1 create uptime`
+      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+
   "observability": {
     "enabled": true
   }
