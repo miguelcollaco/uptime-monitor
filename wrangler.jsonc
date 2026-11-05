@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "uptime-monitor",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-11-01",
+
+  // The React status page (built by Vite) is served as static assets.
+  // Unknown paths fall back to index.html so client-side routes work.
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}
