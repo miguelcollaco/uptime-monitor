@@ -21,6 +21,15 @@
     }
   ],
 
+  "vars": {
+    // Title shown on the status page
+    "SITE_TITLE": "Status",
+    // How many failed checks in a row before a monitor is marked down and an alert is sent
+    "FAILURE_THRESHOLD": "2",
+    // How long to keep individual check results
+    "RETENTION_DAYS": "90"
+  },
+
   "observability": {
     "enabled": true
   }
