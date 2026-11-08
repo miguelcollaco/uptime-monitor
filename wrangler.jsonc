@@ -11,6 +11,11 @@
     "not_found_handling": "single-page-application"
   },
 
+  // Run the checks every 5 minutes. Change to "* * * * *" for every minute.
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+
   "d1_databases": [
     {
       "binding": "DB",

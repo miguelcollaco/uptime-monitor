@@ -1,4 +1,4 @@
-import type { MonitorRow } from "./env";
+import type { Env, MonitorRow } from "./env";
 
 export interface CheckResult {
   monitorId: number;
@@ -55,4 +55,33 @@ export async function checkMonitor(m: MonitorRow): Promise<CheckResult> {
 function describeError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   return msg.slice(0, 300);
+}
+
+/** Check every active monitor and store the results. */
+export async function runAllChecks(env: Env): Promise<CheckResult[]> {
+  const { results: monitors } = await env.DB.prepare(
+    "SELECT * FROM monitors WHERE paused = 0",
+  ).all<MonitorRow>();
+
+  if (monitors.length === 0) return [];
+
+  const results = await Promise.all(monitors.map(checkMonitor));
+
+  const statements: D1PreparedStatement[] = [];
+
+  for (let i = 0; i < monitors.length; i++) {
+    const m = monitors[i];
+    const r = results[i];
+
+    statements.push(
+      env.DB.prepare(
+        "INSERT INTO checks (monitor_id, checked_at, ok, status_code, latency_ms, error) VALUES (?, ?, ?, ?, ?, ?)",
+      ).bind(m.id, r.checkedAt, r.ok ? 1 : 0, r.statusCode, r.latencyMs, r.error),
+      env.DB.prepare("UPDATE monitors SET last_checked_at = ? WHERE id = ?").bind(r.checkedAt, m.id),
+    );
+  }
+
+  await env.DB.batch(statements);
+
+  return results;
 }
