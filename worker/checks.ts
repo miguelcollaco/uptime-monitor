@@ -1,4 +1,5 @@
 import type { Env, MonitorRow } from "./env";
+import { intVar } from "./env";
 
 export interface CheckResult {
   monitorId: number;
@@ -57,8 +58,11 @@ function describeError(err: unknown): string {
   return msg.slice(0, 300);
 }
 
-/** Check every active monitor and store the results. */
+/**
+ * Check every active monitor, store the results and update each monitor's state.
+ */
 export async function runAllChecks(env: Env): Promise<CheckResult[]> {
+  const threshold = intVar(env.FAILURE_THRESHOLD, 2);
   const { results: monitors } = await env.DB.prepare(
     "SELECT * FROM monitors WHERE paused = 0",
   ).all<MonitorRow>();
@@ -77,7 +81,23 @@ export async function runAllChecks(env: Env): Promise<CheckResult[]> {
       env.DB.prepare(
         "INSERT INTO checks (monitor_id, checked_at, ok, status_code, latency_ms, error) VALUES (?, ?, ?, ?, ?, ?)",
       ).bind(m.id, r.checkedAt, r.ok ? 1 : 0, r.statusCode, r.latencyMs, r.error),
-      env.DB.prepare("UPDATE monitors SET last_checked_at = ? WHERE id = ?").bind(r.checkedAt, m.id),
+    );
+
+    let status = m.status;
+    let failures = m.consecutive_failures;
+
+    if (r.ok) {
+      failures = 0;
+      status = "up";
+    } else {
+      failures += 1;
+      if (failures >= threshold) status = "down";
+    }
+
+    statements.push(
+      env.DB.prepare(
+        "UPDATE monitors SET status = ?, consecutive_failures = ?, last_checked_at = ? WHERE id = ?",
+      ).bind(status, failures, r.checkedAt, m.id),
     );
   }
 
