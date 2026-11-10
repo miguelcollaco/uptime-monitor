@@ -59,7 +59,8 @@ function describeError(err: unknown): string {
 }
 
 /**
- * Check every active monitor, store the results and update each monitor's state.
+ * Check every active monitor, store the results, update each monitor's state,
+ * and open/close incidents on state changes.
  */
 export async function runAllChecks(env: Env): Promise<CheckResult[]> {
   const threshold = intVar(env.FAILURE_THRESHOLD, 2);
@@ -88,10 +89,26 @@ export async function runAllChecks(env: Env): Promise<CheckResult[]> {
 
     if (r.ok) {
       failures = 0;
-      status = "up";
+      if (m.status === "down") {
+        status = "up";
+        statements.push(
+          env.DB.prepare(
+            "UPDATE incidents SET resolved_at = ? WHERE monitor_id = ? AND resolved_at IS NULL",
+          ).bind(r.checkedAt, m.id),
+        );
+      } else if (m.status === "unknown") {
+        status = "up";
+      }
     } else {
       failures += 1;
-      if (failures >= threshold) status = "down";
+      if (failures >= threshold && m.status !== "down") {
+        status = "down";
+        statements.push(
+          env.DB.prepare(
+            "INSERT INTO incidents (monitor_id, started_at, cause) VALUES (?, ?, ?)",
+          ).bind(m.id, r.checkedAt, r.error),
+        );
+      }
     }
 
     statements.push(
