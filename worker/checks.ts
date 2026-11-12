@@ -1,5 +1,6 @@
 import type { Env, MonitorRow } from "./env";
 import { intVar } from "./env";
+import { sendAlert } from "./alerts";
 
 export interface CheckResult {
   monitorId: number;
@@ -60,7 +61,7 @@ function describeError(err: unknown): string {
 
 /**
  * Check every active monitor, store the results, update each monitor's state,
- * and open/close incidents on state changes.
+ * open/close incidents and send alerts on state changes.
  */
 export async function runAllChecks(env: Env): Promise<CheckResult[]> {
   const threshold = intVar(env.FAILURE_THRESHOLD, 2);
@@ -73,6 +74,7 @@ export async function runAllChecks(env: Env): Promise<CheckResult[]> {
   const results = await Promise.all(monitors.map(checkMonitor));
 
   const statements: D1PreparedStatement[] = [];
+  const alerts: string[] = [];
 
   for (let i = 0; i < monitors.length; i++) {
     const m = monitors[i];
@@ -96,6 +98,7 @@ export async function runAllChecks(env: Env): Promise<CheckResult[]> {
             "UPDATE incidents SET resolved_at = ? WHERE monitor_id = ? AND resolved_at IS NULL",
           ).bind(r.checkedAt, m.id),
         );
+        alerts.push(`✅ **${m.name}** is back up (${r.statusCode}, ${r.latencyMs} ms).`);
       } else if (m.status === "unknown") {
         status = "up";
       }
@@ -108,6 +111,7 @@ export async function runAllChecks(env: Env): Promise<CheckResult[]> {
             "INSERT INTO incidents (monitor_id, started_at, cause) VALUES (?, ?, ?)",
           ).bind(m.id, r.checkedAt, r.error),
         );
+        alerts.push(`🔴 **${m.name}** is down: ${r.error} (${m.url})`);
       }
     }
 
@@ -119,6 +123,10 @@ export async function runAllChecks(env: Env): Promise<CheckResult[]> {
   }
 
   await env.DB.batch(statements);
+
+  for (const text of alerts) {
+    await sendAlert(env, text);
+  }
 
   return results;
 }

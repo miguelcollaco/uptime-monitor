@@ -4,6 +4,8 @@ export interface Env {
   SITE_TITLE: string;
   FAILURE_THRESHOLD: string;
   RETENTION_DAYS: string;
+  /** Discord or Slack incoming webhook URL (secret, optional) */
+  ALERT_WEBHOOK_URL?: string;
 }
 
 /** Row shape of the `monitors` table. */
