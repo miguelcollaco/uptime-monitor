@@ -7,6 +7,7 @@ import type {
 } from "../shared/types";
 import type { Env, MonitorRow } from "./env";
 import { intVar } from "./env";
+import { runAllChecks } from "./checks";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -26,6 +27,10 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
   const path = url.pathname;
 
   try {
+    if (path.startsWith("/api/admin/")) {
+      return await handleAdmin(request, env, path.slice("/api/admin".length));
+    }
+
     if (request.method !== "GET") return error(405, "Method not allowed");
 
     if (path === "/api/summary") {
@@ -161,4 +166,100 @@ async function getLatency(env: Env, monitorId: number, hours: number): Promise<L
     hours,
     points: results.map((r) => ({ t: r.checked_at, latencyMs: r.latency_ms, ok: r.ok === 1 })),
   };
+}
+
+// ---------- Admin API (Bearer ADMIN_TOKEN) ----------
+
+async function isAuthorized(request: Request, env: Env): Promise<boolean> {
+  const token = env.ADMIN_TOKEN;
+  if (!token) return false;
+  const header = request.headers.get("authorization") ?? "";
+  const given = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const enc = new TextEncoder();
+  // Hash both sides so the comparison is constant-time and length-independent.
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(given)),
+    crypto.subtle.digest("SHA-256", enc.encode(token)),
+  ]);
+  return crypto.subtle.timingSafeEqual(a, b);
+}
+
+interface MonitorInput {
+  name?: unknown;
+  url?: unknown;
+  method?: unknown;
+  paused?: unknown;
+}
+
+async function handleAdmin(request: Request, env: Env, sub: string): Promise<Response> {
+  if (!env.ADMIN_TOKEN) return error(404, "Admin API disabled: set the ADMIN_TOKEN secret");
+  if (!(await isAuthorized(request, env))) return error(401, "Unauthorized");
+
+  // POST /api/admin/run  -> run all checks now
+  if (sub === "/run" && request.method === "POST") {
+    const results = await runAllChecks(env);
+    return json({ ran: results.length, results });
+  }
+
+  // GET /api/admin/monitors  -> list with URLs
+  if (sub === "/monitors" && request.method === "GET") {
+    const { results } = await env.DB.prepare("SELECT * FROM monitors ORDER BY id").all<MonitorRow>();
+    return json(results);
+  }
+
+  // POST /api/admin/monitors  -> create
+  if (sub === "/monitors" && request.method === "POST") {
+    const body = (await request.json().catch(() => null)) as MonitorInput | null;
+    if (!body) return error(400, "Expected a JSON body");
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!name || typeof body.url !== "string") return error(400, "name and url are required");
+    const method = body.method === "HEAD" ? "HEAD" : "GET";
+    const row = await env.DB.prepare(
+      `INSERT INTO monitors (name, url, method, created_at)
+       VALUES (?, ?, ?, ?) RETURNING *`,
+    )
+      .bind(name, body.url, method, Date.now())
+      .first<MonitorRow>();
+    return json(row, { status: 201 });
+  }
+
+  const idMatch = sub.match(/^\/monitors\/(\d+)$/);
+  if (idMatch) {
+    const id = Number(idMatch[1]);
+
+    // PATCH /api/admin/monitors/:id  -> update name/url/paused
+    if (request.method === "PATCH") {
+      const body = (await request.json().catch(() => null)) as MonitorInput | null;
+      if (!body) return error(400, "Expected a JSON body");
+      const sets: string[] = [];
+      const values: unknown[] = [];
+      if (typeof body.name === "string" && body.name.trim()) {
+        sets.push("name = ?");
+        values.push(body.name.trim());
+      }
+      if (typeof body.url === "string") {
+        sets.push("url = ?");
+        values.push(body.url);
+      }
+      if (typeof body.paused === "boolean") {
+        sets.push("paused = ?");
+        values.push(body.paused ? 1 : 0);
+      }
+      if (sets.length === 0) return error(400, "Nothing to update");
+      const row = await env.DB.prepare(
+        `UPDATE monitors SET ${sets.join(", ")} WHERE id = ? RETURNING *`,
+      )
+        .bind(...values, id)
+        .first<MonitorRow>();
+      return row ? json(row) : error(404, "Monitor not found");
+    }
+
+    // DELETE /api/admin/monitors/:id
+    if (request.method === "DELETE") {
+      await env.DB.prepare("DELETE FROM monitors WHERE id = ?").bind(id).run();
+      return new Response(null, { status: 204 });
+    }
+  }
+
+  return error(404, "Not found");
 }

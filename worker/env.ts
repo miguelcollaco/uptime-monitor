@@ -6,6 +6,8 @@ export interface Env {
   RETENTION_DAYS: string;
   /** Discord or Slack incoming webhook URL (secret, optional) */
   ALERT_WEBHOOK_URL?: string;
+  /** Bearer token for /api/admin/* (secret, optional: admin API is disabled without it) */
+  ADMIN_TOKEN?: string;
 }
 
 /** Row shape of the `monitors` table. */

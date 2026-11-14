@@ -39,6 +39,7 @@
 
   // Secrets (set with `npx wrangler secret put <NAME>`, never committed):
   //   ALERT_WEBHOOK_URL  Discord or Slack incoming webhook URL
+  //   ADMIN_TOKEN        Bearer token for the admin API (adding/removing monitors)
 
   "observability": {
     "enabled": true
