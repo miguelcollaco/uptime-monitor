@@ -8,7 +8,9 @@
   // Unknown paths fall back to index.html so client-side routes work.
   "assets": {
     "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // Send /api/* straight to the Worker instead of looking for a static file first.
+    "run_worker_first": ["/api/*"]
   },
 
   // Run the checks every 5 minutes. Change to "* * * * *" for every minute.
