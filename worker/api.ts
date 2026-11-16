@@ -188,7 +188,20 @@ interface MonitorInput {
   name?: unknown;
   url?: unknown;
   method?: unknown;
+  timeout_ms?: unknown;
+  expected_status_min?: unknown;
+  expected_status_max?: unknown;
   paused?: unknown;
+}
+
+function validateUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    const u = new URL(value);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 async function handleAdmin(request: Request, env: Env, sub: string): Promise<Response> {
@@ -212,13 +225,18 @@ async function handleAdmin(request: Request, env: Env, sub: string): Promise<Res
     const body = (await request.json().catch(() => null)) as MonitorInput | null;
     if (!body) return error(400, "Expected a JSON body");
     const name = typeof body.name === "string" ? body.name.trim() : "";
-    if (!name || typeof body.url !== "string") return error(400, "name and url are required");
+    const url = validateUrl(body.url);
+    if (!name) return error(400, "name is required");
+    if (!url) return error(400, "url must be an http(s) URL");
     const method = body.method === "HEAD" ? "HEAD" : "GET";
+    const timeout = clampInt(body.timeout_ms, 1000, 30000, 10000);
+    const min = clampInt(body.expected_status_min, 100, 599, 200);
+    const max = clampInt(body.expected_status_max, min, 599, 399);
     const row = await env.DB.prepare(
-      `INSERT INTO monitors (name, url, method, created_at)
-       VALUES (?, ?, ?, ?) RETURNING *`,
+      `INSERT INTO monitors (name, url, method, timeout_ms, expected_status_min, expected_status_max, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *`,
     )
-      .bind(name, body.url, method, Date.now())
+      .bind(name, url, method, timeout, min, max, Date.now())
       .first<MonitorRow>();
     return json(row, { status: 201 });
   }
@@ -227,7 +245,7 @@ async function handleAdmin(request: Request, env: Env, sub: string): Promise<Res
   if (idMatch) {
     const id = Number(idMatch[1]);
 
-    // PATCH /api/admin/monitors/:id  -> update name/url/paused
+    // PATCH /api/admin/monitors/:id  -> update name/url/paused/...
     if (request.method === "PATCH") {
       const body = (await request.json().catch(() => null)) as MonitorInput | null;
       if (!body) return error(400, "Expected a JSON body");
@@ -237,13 +255,19 @@ async function handleAdmin(request: Request, env: Env, sub: string): Promise<Res
         sets.push("name = ?");
         values.push(body.name.trim());
       }
-      if (typeof body.url === "string") {
+      if (body.url !== undefined) {
+        const url = validateUrl(body.url);
+        if (!url) return error(400, "url must be an http(s) URL");
         sets.push("url = ?");
-        values.push(body.url);
+        values.push(url);
       }
       if (typeof body.paused === "boolean") {
         sets.push("paused = ?");
         values.push(body.paused ? 1 : 0);
+      }
+      if (body.timeout_ms !== undefined) {
+        sets.push("timeout_ms = ?");
+        values.push(clampInt(body.timeout_ms, 1000, 30000, 10000));
       }
       if (sets.length === 0) return error(400, "Nothing to update");
       const row = await env.DB.prepare(
@@ -262,4 +286,10 @@ async function handleAdmin(request: Request, env: Env, sub: string): Promise<Res
   }
 
   return error(404, "Not found");
+}
+
+function clampInt(value: unknown, min: number, max: number, fallback: number): number {
+  const n = typeof value === "number" ? Math.round(value) : Number.NaN;
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
 }
