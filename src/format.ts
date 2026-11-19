@@ -20,3 +20,8 @@ export function timeAgo(ts: number | null, now = Date.now()): string {
   if (h < 48) return `${h} h ago`;
   return `${Math.round(h / 24)} days ago`;
 }
+
+/** YYYY-MM-DD for a UTC day offset from today (0 = today). */
+export function utcDay(daysAgo: number, now = Date.now()): string {
+  return new Date(now - daysAgo * 86_400_000).toISOString().slice(0, 10);
+}

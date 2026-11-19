@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PublicMonitor, SummaryResponse } from "../shared/types";
 import { fetchSummary } from "./api";
+import { UptimeBars } from "./components/UptimeBars";
 import { formatMs, formatPercent, timeAgo } from "./format";
 
 export default function App() {
@@ -89,9 +90,14 @@ function MonitorRow({ monitor: m, days }: { monitor: PublicMonitor; days: number
         </span>
       </div>
 
-      <div className="monitor__stats muted">
-        24 h: {formatPercent(m.uptime24h)} · avg {formatMs(m.avgLatency24hMs)} · checked{" "}
-        {timeAgo(m.lastCheckedAt)}
+      <UptimeBars daily={m.daily} days={days} />
+      <div className="bars__legend muted">
+        <span>{days} days ago</span>
+        <span>
+          24 h: {formatPercent(m.uptime24h)} · avg {formatMs(m.avgLatency24hMs)} · checked{" "}
+          {timeAgo(m.lastCheckedAt)}
+        </span>
+        <span>Today</span>
       </div>
     </div>
   );
