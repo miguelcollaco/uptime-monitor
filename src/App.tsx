@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PublicMonitor, SummaryResponse } from "../shared/types";
 import { fetchSummary } from "./api";
+import { LatencyChart } from "./components/LatencyChart";
 import { UptimeBars } from "./components/UptimeBars";
 import { formatMs, formatPercent, timeAgo } from "./format";
 
@@ -72,12 +73,17 @@ function OverallBanner({ monitors }: { monitors: PublicMonitor[] }) {
 }
 
 function MonitorRow({ monitor: m, days }: { monitor: PublicMonitor; days: number }) {
+  const [open, setOpen] = useState(false);
   const status = m.paused ? "paused" : m.status;
   const statusLabel = { up: "Operational", down: "Down", unknown: "Pending", paused: "Paused" }[status];
 
   return (
     <div className="monitor">
-      <div className="monitor__head">
+      <button
+        className="monitor__head"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
         <span className="monitor__name">
           <span className={`dot dot--${status}`} aria-hidden />
           {m.name}
@@ -87,8 +93,11 @@ function MonitorRow({ monitor: m, days }: { monitor: PublicMonitor; days: number
           <span className="muted" title={`Uptime over the last ${days} days`}>
             {formatPercent(m.uptimeWindow)}
           </span>
+          <span className="chevron" aria-hidden>
+            {open ? "▾" : "▸"}
+          </span>
         </span>
-      </div>
+      </button>
 
       <UptimeBars daily={m.daily} days={days} />
       <div className="bars__legend muted">
@@ -99,6 +108,8 @@ function MonitorRow({ monitor: m, days }: { monitor: PublicMonitor; days: number
         </span>
         <span>Today</span>
       </div>
+
+      {open && <LatencyChart monitorId={m.id} />}
     </div>
   );
 }

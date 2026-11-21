@@ -8,6 +8,7 @@
   --degraded: #e2a03f;
   --down: #e5484d;
   --none: #d9dce1;
+  --accent: #3b6ef5;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color: var(--text);
   background: var(--bg);
@@ -78,11 +79,21 @@ body {
 }
 
 .monitor__head {
+  all: unset;
+  box-sizing: border-box;
   display: flex;
+  width: 100%;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  cursor: pointer;
   margin-bottom: 10px;
+}
+
+.monitor__head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 4px;
 }
 
 .monitor__name {
@@ -97,6 +108,11 @@ body {
   align-items: center;
   gap: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+.chevron {
+  color: var(--muted);
+  width: 1em;
 }
 
 .dot {
@@ -177,6 +193,48 @@ body {
   margin-top: 6px;
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
+}
+
+.chart {
+  margin: 16px 0 0;
+}
+
+.chart svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.chart__grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.chart__label {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+.chart__line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.chart__dot {
+  fill: var(--accent);
+}
+
+.chart__fail {
+  stroke: var(--down);
+  stroke-width: 2;
+  opacity: 0.6;
+}
+
+.chart figcaption {
+  font-size: 0.8rem;
+  margin-top: 6px;
 }
 
 .footer {
