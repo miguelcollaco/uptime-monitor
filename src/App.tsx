@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import type { PublicMonitor, SummaryResponse } from "../shared/types";
+import type { Incident, PublicMonitor, SummaryResponse } from "../shared/types";
 import { fetchSummary } from "./api";
 import { LatencyChart } from "./components/LatencyChart";
 import { UptimeBars } from "./components/UptimeBars";
-import { formatMs, formatPercent, timeAgo } from "./format";
+import { formatDateTime, formatDuration, formatMs, formatPercent, timeAgo } from "./format";
 
 export default function App() {
   const [data, setData] = useState<SummaryResponse | null>(null);
@@ -49,6 +49,8 @@ export default function App() {
           data.monitors.map((m) => <MonitorRow key={m.id} monitor={m} days={data.windowDays} />)
         )}
       </section>
+
+      <Incidents incidents={data.incidents} />
 
       <footer className="footer muted">Checks run on Cloudflare Workers · data in D1</footer>
     </main>
@@ -111,5 +113,38 @@ function MonitorRow({ monitor: m, days }: { monitor: PublicMonitor; days: number
 
       {open && <LatencyChart monitorId={m.id} />}
     </div>
+  );
+}
+
+function Incidents({ incidents }: { incidents: Incident[] }) {
+  return (
+    <section className="card">
+      <h2>Recent incidents</h2>
+      {incidents.length === 0 ? (
+        <p className="muted">No incidents recorded.</p>
+      ) : (
+        <ul className="incidents">
+          {incidents.map((i) => (
+            <li key={i.id}>
+              <span className={`dot dot--${i.resolvedAt ? "up" : "down"}`} aria-hidden />
+              <div>
+                <strong>{i.monitorName}</strong>{" "}
+                {i.resolvedAt ? (
+                  <span className="muted">
+                    was down for {formatDuration(i.resolvedAt - i.startedAt)}
+                  </span>
+                ) : (
+                  <span className="warn">is down (ongoing)</span>
+                )}
+                <div className="muted small">
+                  {formatDateTime(i.startedAt)}
+                  {i.cause && ` · ${i.cause}`}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

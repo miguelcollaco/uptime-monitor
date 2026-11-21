@@ -34,8 +34,21 @@ body {
   letter-spacing: -0.01em;
 }
 
+h2 {
+  font-size: 1rem;
+  margin: 0 0 12px;
+}
+
 .muted {
   color: var(--muted);
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+.warn {
+  color: var(--down);
 }
 
 .banner {
@@ -67,6 +80,10 @@ body {
   border-radius: 12px;
   padding: 8px 20px;
   margin-bottom: 20px;
+}
+
+.card > h2 {
+  padding-top: 14px;
 }
 
 .monitor {
@@ -235,6 +252,20 @@ body {
 .chart figcaption {
   font-size: 0.8rem;
   margin-top: 6px;
+}
+
+.incidents {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 12px;
+}
+
+.incidents li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
 }
 
 .footer {

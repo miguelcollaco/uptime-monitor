@@ -30,6 +30,17 @@ export function formatDateTime(ts: number): string {
   });
 }
 
+export function formatDuration(ms: number): string {
+  const m = Math.round(ms / 60000);
+  if (m < 1) return "under a minute";
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const rest = m % 60;
+  if (h < 24) return rest ? `${h} h ${rest} min` : `${h} h`;
+  const d = Math.floor(h / 24);
+  return `${d} d ${h % 24} h`;
+}
+
 /** YYYY-MM-DD for a UTC day offset from today (0 = today). */
 export function utcDay(daysAgo: number, now = Date.now()): string {
   return new Date(now - daysAgo * 86_400_000).toISOString().slice(0, 10);
