@@ -14,6 +14,17 @@
   background: var(--bg);
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --card: #171a20;
+    --text: #e7e9ee;
+    --muted: #8b93a1;
+    --border: #262a33;
+    --none: #2c313b;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -272,4 +283,10 @@ h2 {
   text-align: center;
   font-size: 0.8rem;
   margin-top: 32px;
+}
+
+@media (max-width: 560px) {
+  .bars__legend span:nth-child(2) {
+    display: none;
+  }
 }

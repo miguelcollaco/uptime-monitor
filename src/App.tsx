@@ -5,6 +5,8 @@ import { LatencyChart } from "./components/LatencyChart";
 import { UptimeBars } from "./components/UptimeBars";
 import { formatDateTime, formatDuration, formatMs, formatPercent, timeAgo } from "./format";
 
+const REFRESH_MS = 60_000;
+
 export default function App() {
   const [data, setData] = useState<SummaryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +23,8 @@ export default function App() {
 
   useEffect(() => {
     load();
+    const id = setInterval(load, REFRESH_MS);
+    return () => clearInterval(id);
   }, [load]);
 
   if (!data) {
@@ -37,6 +41,7 @@ export default function App() {
         <h1>{data.title}</h1>
         <p className="muted">
           Updated {timeAgo(data.generatedAt)}
+          {error && <span className="warn"> · refresh failed, showing last data</span>}
         </p>
       </header>
 
