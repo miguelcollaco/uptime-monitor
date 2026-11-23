@@ -63,7 +63,7 @@ function describeError(err: unknown): string {
  * Check every active monitor, store the results, update each monitor's state,
  * open/close incidents and send alerts on state changes.
  */
-export async function runAllChecks(env: Env): Promise<CheckResult[]> {
+export async function runAllChecks(env: Env, now = Date.now()): Promise<CheckResult[]> {
   const threshold = intVar(env.FAILURE_THRESHOLD, 2);
   const { results: monitors } = await env.DB.prepare(
     "SELECT * FROM monitors WHERE paused = 0",
@@ -126,6 +126,13 @@ export async function runAllChecks(env: Env): Promise<CheckResult[]> {
 
   for (const text of alerts) {
     await sendAlert(env, text);
+  }
+
+  // Once a day (the run that lands in 03:00–03:04 UTC), drop old check rows.
+  const d = new Date(now);
+  if (d.getUTCHours() === 3 && d.getUTCMinutes() < 5) {
+    const retentionMs = intVar(env.RETENTION_DAYS, 90) * 24 * 60 * 60 * 1000;
+    await env.DB.prepare("DELETE FROM checks WHERE checked_at < ?").bind(now - retentionMs).run();
   }
 
   return results;

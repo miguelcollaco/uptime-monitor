@@ -13,9 +13,9 @@ export default {
   },
 
   // Cron trigger: run every active check.
-  async scheduled(_controller, env, ctx): Promise<void> {
+  async scheduled(controller, env, ctx): Promise<void> {
     ctx.waitUntil(
-      runAllChecks(env).then((results) => {
+      runAllChecks(env, controller.scheduledTime).then((results) => {
         const down = results.filter((r) => !r.ok).length;
         console.log(`Checked ${results.length} monitors, ${down} failing`);
       }),
