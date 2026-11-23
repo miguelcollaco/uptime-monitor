@@ -280,7 +280,12 @@ async function handleAdmin(request: Request, env: Env, sub: string): Promise<Res
 
     // DELETE /api/admin/monitors/:id
     if (request.method === "DELETE") {
-      await env.DB.prepare("DELETE FROM monitors WHERE id = ?").bind(id).run();
+      // D1 doesn't enforce foreign keys by default, so delete children explicitly.
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM checks WHERE monitor_id = ?").bind(id),
+        env.DB.prepare("DELETE FROM incidents WHERE monitor_id = ?").bind(id),
+        env.DB.prepare("DELETE FROM monitors WHERE id = ?").bind(id),
+      ]);
       return new Response(null, { status: 204 });
     }
   }
