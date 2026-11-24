@@ -10,7 +10,9 @@
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc -b",
     "db:migrate:local": "wrangler d1 migrations apply uptime --local",
-    "db:migrate:remote": "wrangler d1 migrations apply uptime --remote"
+    "db:migrate:remote": "wrangler d1 migrations apply uptime --remote",
+    "db:seed:local": "wrangler d1 execute uptime --local --file=./seed.sql",
+    "db:seed:remote": "wrangler d1 execute uptime --remote --file=./seed.sql"
   },
   "dependencies": {
     "react": "^19.3.1",
