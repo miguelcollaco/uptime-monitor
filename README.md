@@ -8,6 +8,8 @@ A small, self-hosted uptime monitor that runs entirely on Cloudflare's free tier
 - **React + Vite status page** shows 90-day uptime bars, 24 h response times and recent incidents
 - Everything is **one Worker**, deployed with one command
 
+![Status page](docs/screenshot.png)
+
 ## How it works
 
 ```
