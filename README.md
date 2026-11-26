@@ -1,5 +1,7 @@
 # Uptime Monitor
 
+**Live:** [uptime-monitor.miguel-l-collaco.workers.dev](https://uptime-monitor.miguel-l-collaco.workers.dev)
+
 A small, self-hosted uptime monitor that runs entirely on Cloudflare's free tier:
 
 - **Cron Trigger** runs HTTP checks against your sites every 5 minutes
@@ -65,7 +67,7 @@ wrangler.jsonc Worker config: cron schedule, D1 binding, settings
 
 ## Run it locally
 
-Requires Node.js 18+ and [pnpm](https://pnpm.io/installation).
+Requires Node.js 22.12+ and [pnpm](https://pnpm.io/installation).
 
 ```bash
 pnpm install
@@ -89,21 +91,38 @@ ALERT_WEBHOOK_URL=https://discord.com/api/webhooks/...
 
 ## Deploy to Cloudflare
 
+Everything fits in the Workers Free plan.
+
+### First deploy
+
 ```bash
-pnpm wrangler login                       # once, opens the browser
-pnpm wrangler d1 create uptime            # copy the database_id it prints into wrangler.jsonc
-pnpm db:migrate:remote
-pnpm db:seed:remote
-pnpm wrangler secret put ALERT_WEBHOOK_URL   # paste your Discord or Slack webhook URL
-pnpm wrangler secret put ADMIN_TOKEN         # your admin password: a long random string
-pnpm run deploy
+pnpm wrangler login                  # opens the browser (on WSL, add --browser=false and open the link yourself)
+pnpm wrangler d1 create uptime       # put the database_id it prints into wrangler.jsonc
+pnpm db:migrate:remote               # create the tables
+pnpm db:seed:remote                  # optional: the starter monitors from seed.sql
+pnpm run deploy                      # build and deploy the Worker
+pnpm wrangler secret put ADMIN_TOKEN         # admin password: a long random string
+pnpm wrangler secret put ALERT_WEBHOOK_URL   # optional: Discord or Slack webhook
 ```
+
+- **Forked this repo?** `wrangler.jsonc` contains the original author's `database_id`. Replace it with the one `d1 create` prints for you.
+- **New Cloudflare account?** The first deploy needs a workers.dev subdomain. If `deploy` asks for one, set it up under **Workers & Pages** in the dashboard.
+- **Secrets go after the first deploy**, because they're attached to an existing Worker. They're kept across later deploys.
+- **`seed.sql`** includes "Example (should be down)", a monitor that always fails so you can see an outage. Delete it from `/admin` once you've seen how it looks.
 
 It goes live at `https://uptime-monitor.<your-subdomain>.workers.dev`. To use your own domain, add a custom domain to the Worker in the Cloudflare dashboard.
 
 Getting a webhook URL:
 - **Discord:** Server Settings → Integrations → Webhooks → New Webhook → Copy URL
 - **Slack:** create an app with Incoming Webhooks enabled and copy the webhook URL
+
+### Deploy from GitHub
+
+Instead of running `pnpm run deploy` yourself, connect the repo in the dashboard: **Workers & Pages → Create**, then import your GitHub repository. Cloudflare detects pnpm and builds with Vite before running `wrangler deploy`. After that, every push to `main` builds and deploys automatically. You still create the D1 database, run the migrations and set the secrets once, as above.
+
+### Updating
+
+When a change adds a file to `migrations/`, run `pnpm db:migrate:remote` **before** deploying it (or before pushing, with GitHub deploys). The new code writes to the new tables on its first cron run, so applying migrations afterwards would make checks fail until you do.
 
 ## Configuration
 
@@ -113,7 +132,7 @@ In `wrangler.jsonc`:
 | --- | --- | --- |
 | `triggers.crons` | `*/5 * * * *` | How often checks run |
 | `vars.SITE_TITLE` | `Uptime Monitor` | Title on the status page and browser tab |
-| `vars.FAILURE_THRESHOLD` | `2` | Failed checks in a row before "down" + alert |
+| `vars.FAILURE_THRESHOLD` | `2` | Failed runs in a row (each decided by the region vote) before "down" + alert |
 | `vars.RETENTION_DAYS` | `90` | How long check history is kept (and the bar chart window) |
 | `vars.REGIONS` | `weur,enam,apac` | Where checks run from. Any of `wnam` (US West), `enam` (US East), `sam` (South America), `weur` (Europe), `eeur` (Eastern Europe), `apac` (Asia-Pacific), `oc` (Oceania), `afr` (Africa), `me` (Middle East). An odd number avoids ties; a tie counts as up. |
 
