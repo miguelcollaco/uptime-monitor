@@ -46,13 +46,13 @@ wrangler.jsonc Worker config: cron schedule, D1 binding, settings
 
 ## Run it locally
 
-Requires Node.js 18+.
+Requires Node.js 18+ and [pnpm](https://pnpm.io/installation).
 
 ```bash
-npm install
-npm run db:migrate:local      # create the tables in a local D1 database
-npm run db:seed:local         # add the monitors from seed.sql (edit it first)
-npm run dev                   # status page + API at http://localhost:5173
+pnpm install
+pnpm db:migrate:local      # create the tables in a local D1 database
+pnpm db:seed:local         # add the monitors from seed.sql (edit it first)
+pnpm dev                   # status page + API at http://localhost:5173
 ```
 
 The cron doesn't fire on its own in dev. Trigger a run manually:
@@ -71,13 +71,13 @@ ALERT_WEBHOOK_URL=https://discord.com/api/webhooks/...
 ## Deploy to Cloudflare
 
 ```bash
-npx wrangler login                       # once, opens the browser
-npx wrangler d1 create uptime            # copy the database_id it prints into wrangler.jsonc
-npm run db:migrate:remote
-npm run db:seed:remote
-npx wrangler secret put ALERT_WEBHOOK_URL   # paste your Discord or Slack webhook URL
-npx wrangler secret put ADMIN_TOKEN         # any long random string
-npm run deploy
+pnpm wrangler login                       # once, opens the browser
+pnpm wrangler d1 create uptime            # copy the database_id it prints into wrangler.jsonc
+pnpm db:migrate:remote
+pnpm db:seed:remote
+pnpm wrangler secret put ALERT_WEBHOOK_URL   # paste your Discord or Slack webhook URL
+pnpm wrangler secret put ADMIN_TOKEN         # any long random string
+pnpm run deploy
 ```
 
 It goes live at `https://uptime-monitor.<your-subdomain>.workers.dev`. To use your own domain, add a custom domain to the Worker in the Cloudflare dashboard.
@@ -97,7 +97,7 @@ In `wrangler.jsonc`:
 | `vars.FAILURE_THRESHOLD` | `2` | Failed checks in a row before "down" + alert |
 | `vars.RETENTION_DAYS` | `90` | How long check history is kept (and the bar chart window) |
 
-Secrets (`npx wrangler secret put <NAME>`):
+Secrets (`pnpm wrangler secret put <NAME>`):
 
 | Secret | Required | What it does |
 | --- | --- | --- |
