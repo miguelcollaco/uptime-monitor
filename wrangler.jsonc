@@ -22,8 +22,9 @@
     {
       "binding": "DB",
       "database_name": "uptime",
-      // Replace with the id printed by `pnpm wrangler d1 create uptime`
-      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
+      // From `pnpm wrangler d1 create uptime`. If you fork this, create your own
+      // database and replace this id.
+      "database_id": "ebddb361-5afe-49ea-a77f-9f832fda9f8d",
       "migrations_dir": "migrations"
     }
   ],
