@@ -44,7 +44,7 @@
 
   "vars": {
     // Title shown on the status page
-    "SITE_TITLE": "Status",
+    "SITE_TITLE": "Uptime Monitor",
     // How many failed checks in a row before a monitor is marked down and an alert is sent
     "FAILURE_THRESHOLD": "2",
     // How long to keep individual check results

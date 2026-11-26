@@ -110,7 +110,7 @@ In `wrangler.jsonc`:
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `triggers.crons` | `*/5 * * * *` | How often checks run |
-| `vars.SITE_TITLE` | `Status` | Title on the status page |
+| `vars.SITE_TITLE` | `Uptime Monitor` | Title on the status page and browser tab |
 | `vars.FAILURE_THRESHOLD` | `2` | Failed checks in a row before "down" + alert |
 | `vars.RETENTION_DAYS` | `90` | How long check history is kept (and the bar chart window) |
 | `vars.REGIONS` | `weur,enam,apac` | Where checks run from. Any of `wnam` (US West), `enam` (US East), `sam` (South America), `weur` (Europe), `eeur` (Eastern Europe), `apac` (Asia-Pacific), `oc` (Oceania), `afr` (Africa), `me` (Middle East). An odd number avoids ties; a tie counts as up. |

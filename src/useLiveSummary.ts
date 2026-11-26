@@ -6,11 +6,15 @@ const PING_MS = 30_000;
 // No message (not even a "pong") for this long means the connection is dead.
 const STALE_MS = 75_000;
 const MAX_RETRY_MS = 60_000;
+// Some networks hold WebSocket upgrades open without answering; don't wait on them.
+const CONNECT_TIMEOUT_MS = 5_000;
 
 /**
  * The status summary, kept current over a WebSocket to /api/live.
- * The server pushes a new summary after every check run. While the socket is
- * down, the hook polls /api/summary every 30 s and keeps trying to reconnect.
+ * The first summary is fetched over HTTP right away so the page never waits on
+ * the socket. After that the server pushes a new summary after every check run.
+ * While the socket is down, the hook polls /api/summary every 30 s and keeps
+ * trying to reconnect.
  */
 export function useLiveSummary() {
   const [data, setData] = useState<SummaryResponse | null>(null);
@@ -24,7 +28,11 @@ export function useLiveSummary() {
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let lastMessageAt = 0;
 
+    let shownAt = 0;
     const apply = (d: SummaryResponse) => {
+      // The first HTTP fetch and a socket push can race; never go back in time.
+      if (d.generatedAt < shownAt) return;
+      shownAt = d.generatedAt;
       setData(d);
       setError(null);
       document.title = d.title;
@@ -40,8 +48,12 @@ export function useLiveSummary() {
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(url);
       ws = socket;
+      const connectTimer = setTimeout(() => {
+        if (socket.readyState === WebSocket.CONNECTING) socket.close();
+      }, CONNECT_TIMEOUT_MS);
 
       socket.onopen = () => {
+        clearTimeout(connectTimer);
         setLive(true);
         retryMs = 1_000;
         lastMessageAt = Date.now();
@@ -52,6 +64,7 @@ export function useLiveSummary() {
       };
       socket.onerror = () => socket.close();
       socket.onclose = () => {
+        clearTimeout(connectTimer);
         if (ws === socket) ws = null;
         setLive(false);
         if (stopped) return;
@@ -61,6 +74,7 @@ export function useLiveSummary() {
       };
     };
 
+    poll();
     connect();
 
     // Connected: ping to keep the connection alive and notice when it dies.

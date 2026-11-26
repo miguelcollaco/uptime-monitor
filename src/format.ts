@@ -30,6 +30,10 @@ export function formatDateTime(ts: number): string {
   });
 }
 
+export function formatTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
 export function formatDuration(ms: number): string {
   const m = Math.round(ms / 60000);
   if (m < 1) return "under a minute";

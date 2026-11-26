@@ -150,7 +150,7 @@ export async function buildSummary(env: Env): Promise<SummaryResponse> {
   }));
 
   return {
-    title: env.SITE_TITLE || "Status",
+    title: env.SITE_TITLE || "Uptime Monitor",
     generatedAt: now,
     windowDays,
     monitors,

@@ -1,13 +1,15 @@
 import { useEffect, useState, type PointerEvent } from "react";
 import type { LatencyPoint, LatencyResponse } from "../../shared/types";
 import { fetchLatency } from "../api";
-import { formatDateTime, formatMs } from "../format";
+import { formatDateTime, formatMs, formatTime } from "../format";
 
-const W = 600;
+const DEFAULT_W = 600;
 const H = 150;
 const PAD = { top: 10, right: 8, bottom: 20, left: 44 };
 /** Categorical slots, assigned in the configured region order (see styles.css). */
 const SERIES_COUNT = 3;
+/** Checks run every few minutes; a longer silence is a gap, not a straight line. */
+const GAP_MS = 15 * 60_000;
 
 interface Props {
   monitorId: number;
@@ -33,6 +35,20 @@ export function LatencyChart({ monitorId, hours = 24, updatedAt }: Props) {
   const [data, setData] = useState<LatencyResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hoverT, setHoverT] = useState<number | null>(null);
+
+  // Draw at the real pixel width so text and lines keep their size on phones.
+  const [plotEl, setPlotEl] = useState<HTMLDivElement | null>(null);
+  const [W, setW] = useState(DEFAULT_W);
+  useEffect(() => {
+    const el = plotEl;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const width = Math.round(entry.contentRect.width);
+      if (width > 0) setW(width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [plotEl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,7 +76,12 @@ export function LatencyChart({ monitorId, hours = 24, updatedAt }: Props) {
   }));
 
   const now = Date.now();
-  const t0 = now - hours * 3_600_000;
+  const windowStart = now - hours * 3_600_000;
+  // With less history than the window (a new monitor), zoom in on the data
+  // instead of squeezing it against the right edge.
+  const firstT = Math.min(...series.flatMap((s) => s.points.map((p) => p.t)), now);
+  const t0 = Math.max(windowStart, firstT - 60_000);
+  const zoomed = t0 > windowStart + 5 * 60_000;
   const allValues = series.flatMap((s) => s.points.map((p) => p.latencyMs).filter((v): v is number => v !== null));
   const maxY = Math.max(100, ...allValues) * 1.1;
 
@@ -69,11 +90,18 @@ export function LatencyChart({ monitorId, hours = 24, updatedAt }: Props) {
   const y = (v: number) => PAD.top + (1 - v / maxY) * (H - PAD.top - PAD.bottom);
   const ticks = [0, maxY / 2, maxY].map((v) => Math.round(v));
 
-  // Break each line at failed checks so gaps are visible.
+  // Break each line at failed checks and at stretches with no checks, so gaps are visible.
   const segmentsFor = (points: LatencyPoint[]) => {
     const segments: string[][] = [];
     let current: string[] = [];
+    let prevT = -Infinity;
     for (const p of points) {
+      const gap = p.t - prevT > GAP_MS;
+      prevT = p.t;
+      if (gap && current.length) {
+        segments.push(current);
+        current = [];
+      }
       if (p.latencyMs === null || !p.ok) {
         if (current.length) segments.push(current);
         current = [];
@@ -129,7 +157,7 @@ export function LatencyChart({ monitorId, hours = 24, updatedAt }: Props) {
         </ul>
       )}
 
-      <div className="chart__plot">
+      <div className="chart__plot" ref={setPlotEl}>
         <svg
           viewBox={`0 0 ${W} ${H}`}
           role="img"
@@ -146,8 +174,13 @@ export function LatencyChart({ monitorId, hours = 24, updatedAt }: Props) {
             </g>
           ))}
           <text className="chart__label" x={PAD.left} y={H - 4}>
-            {hours} h ago
+            {zoomed ? formatTime(t0) : `${hours} h ago`}
           </text>
+          {zoomed && (
+            <text className="chart__label" x={PAD.left + plotW / 2} y={H - 4} textAnchor="middle">
+              {formatTime((t0 + now) / 2)}
+            </text>
+          )}
           <text className="chart__label" x={W - PAD.right} y={H - 4} textAnchor="end">
             now
           </text>
@@ -217,6 +250,7 @@ export function LatencyChart({ monitorId, hours = 24, updatedAt }: Props) {
 
       <figcaption className="muted">
         Typical response {formatMs(typical)} over {runs.length} {runs.length === 1 ? "run" : "runs"}
+        {zoomed && ` since ${formatTime(firstT)}`}
         {series.length > 1 && " (median across regions)"}
         {downRuns.length > 0 && `, ${downRuns.length} counted as down (red)`}
       </figcaption>

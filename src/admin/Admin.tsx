@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { MonitorRow } from "../../shared/types";
+import { ArrowLeftIcon, TopBar } from "../components/TopBar";
 import { timeAgo } from "../format";
 import { AuthError, adminApi, type MonitorInput } from "./api";
 
@@ -23,29 +24,31 @@ export default function Admin() {
   }, []);
 
   return (
-    <main className="page">
-      {auth === "checking" && <p className="muted">Loading…</p>}
-      {auth === "disabled" && (
-        <section className="card login">
-          <h1>Admin is disabled</h1>
-          <p className="muted">
-            Set the <code>ADMIN_TOKEN</code> secret to turn it on. Locally, add it to{" "}
-            <code>.dev.vars</code>; when deployed, run <code>pnpm wrangler secret put ADMIN_TOKEN</code>.
-          </p>
-          <a href="/">← Status page</a>
-        </section>
-      )}
-      {auth === "out" && (
-        <LoginForm
-          notice={notice}
-          onLogin={() => {
-            setNotice(null);
-            setAuth("in");
-          }}
-        />
-      )}
-      {auth === "in" && <Dashboard onLogout={() => setAuth("out")} onExpired={onExpired} />}
-    </main>
+    <div className="page">
+      <TopBar title="Admin" link={{ href: "/", label: "Status page", icon: <ArrowLeftIcon /> }} />
+      <main>
+        {auth === "checking" && <p className="muted">Loading…</p>}
+        {auth === "disabled" && (
+          <section className="card login">
+            <h1>Admin is disabled</h1>
+            <p className="muted">
+              Set the <code>ADMIN_TOKEN</code> secret to turn it on. Locally, add it to{" "}
+              <code>.dev.vars</code>; when deployed, run <code>pnpm wrangler secret put ADMIN_TOKEN</code>.
+            </p>
+          </section>
+        )}
+        {auth === "out" && (
+          <LoginForm
+            notice={notice}
+            onLogin={() => {
+              setNotice(null);
+              setAuth("in");
+            }}
+          />
+        )}
+        {auth === "in" && <Dashboard onLogout={() => setAuth("out")} onExpired={onExpired} />}
+      </main>
+    </div>
   );
 }
 
@@ -92,9 +95,6 @@ function LoginForm({ notice, onLogin }: { notice: string | null; onLogin: () => 
         <button className="btn btn--primary" disabled={busy}>
           {busy ? "Logging in…" : "Log in"}
         </button>
-        <a href="/" className="small">
-          ← Status page
-        </a>
       </div>
     </form>
   );
@@ -155,9 +155,7 @@ function Dashboard({
       <header className="header admin__header">
         <div>
           <h1>Monitors</h1>
-          <p className="muted">
-            <a href="/">View status page</a>
-          </p>
+          <p className="muted small">Changes show up on the status page right away.</p>
         </div>
         <div className="admin__actions">
           <button
