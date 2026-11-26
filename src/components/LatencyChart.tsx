@@ -10,10 +10,12 @@ const PAD = { top: 10, right: 8, bottom: 20, left: 44 };
 interface Props {
   monitorId: number;
   hours?: number;
+  /** When the summary last changed; the chart reloads when this does. */
+  updatedAt?: number;
 }
 
 /** Response time over the last N hours; failed checks are marked in red. */
-export function LatencyChart({ monitorId, hours = 24 }: Props) {
+export function LatencyChart({ monitorId, hours = 24, updatedAt }: Props) {
   const [points, setPoints] = useState<LatencyPoint[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,7 +27,7 @@ export function LatencyChart({ monitorId, hours = 24 }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [monitorId, hours]);
+  }, [monitorId, hours, updatedAt]);
 
   if (error) return <p className="muted">Couldn't load latency: {error}</p>;
   if (!points) return <p className="muted">Loading…</p>;

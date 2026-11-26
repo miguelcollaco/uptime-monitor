@@ -28,6 +28,13 @@
     }
   ],
 
+  // Holds the latest summary and the WebSocket of every open status page.
+  // SQLite-backed Durable Objects are included in the Workers Free plan.
+  "durable_objects": {
+    "bindings": [{ "name": "LIVE", "class_name": "LiveStatus" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["LiveStatus"] }],
+
   "vars": {
     // Title shown on the status page
     "SITE_TITLE": "Status",

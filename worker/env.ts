@@ -1,5 +1,9 @@
+import type { LiveStatus } from "./live";
+
 export interface Env {
   DB: D1Database;
+  /** Durable Object that pushes live updates to open status pages */
+  LIVE: DurableObjectNamespace<LiveStatus>;
   ASSETS: Fetcher;
   SITE_TITLE: string;
   FAILURE_THRESHOLD: string;

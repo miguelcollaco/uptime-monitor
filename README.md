@@ -6,6 +6,7 @@ A small, self-hosted uptime monitor that runs entirely on Cloudflare's free tier
 - **D1** (SQLite) stores every check, each monitor's state and an incident log
 - **Discord or Slack alerts** fire when a site goes down and when it recovers
 - **React + Vite status page** shows 90-day uptime bars, 24 h response times and recent incidents
+- **Live updates** over WebSockets through a Durable Object: open pages change as soon as checks run, no refresh needed
 - Everything is **one Worker**, deployed with one command
 
 ![Status page](docs/screenshot.png)
@@ -16,18 +17,22 @@ A small, self-hosted uptime monitor that runs entirely on Cloudflare's free tier
              every 5 min                      HTTP checks
  Cron Trigger ──────────► Worker.scheduled() ───────────► your sites
                                │
-                               ├─ store results ────────► D1: checks
+                               ├─ store results ────────► D1: checks, daily_stats
                                ├─ update state / incidents ► D1: monitors, incidents
-                               └─ on state change ──────► Discord / Slack webhook
-
+                               ├─ on state change ──────► Discord / Slack webhook
+                               └─ publish ──────────────► LiveStatus Durable Object
+                                                            │ rebuilds the summary once,
+                                                            ▼ pushes it to every open page
  Browser ──► Worker.fetch()
-               ├─ /api/*  ──► JSON API (reads D1)
-               └─ else    ──► React status page (static assets)
+               ├─ /api/live ──► WebSocket to LiveStatus
+               ├─ /api/*    ──► JSON API
+               └─ else      ──► React status page (static assets)
 ```
 
 - A monitor is marked **down** only after `FAILURE_THRESHOLD` failed checks in a row (default 2), so one blip doesn't page you. One alert goes out when it goes down and one when it recovers.
 - A check fails on timeout (default 10 s), network error, or a status outside the expected range (default 200–399). Latency is measured to the response headers.
 - Check rows older than `RETENTION_DAYS` (default 90) are deleted once a day.
+- **Staying in the free tier:** each check also updates a per-day row in `daily_stats`, so building the summary reads about 90 rows per monitor for the uptime bars instead of every check in the window. The `LiveStatus` Durable Object builds the summary once per cron run and serves it to every viewer, so D1 reads don't grow with traffic. Its WebSockets use the Hibernation API, so idle connections cost nothing. If the socket drops, the page polls `/api/summary` every 30 s and keeps reconnecting.
 
 ## Project layout
 
@@ -37,6 +42,8 @@ worker/       Cloudflare Worker (TypeScript)
   checks.ts     HTTP checks, state machine, incidents
   alerts.ts     Discord / Slack webhook
   api.ts        public JSON API + token-protected admin API
+  summary.ts    builds the status summary from D1
+  live.ts       LiveStatus Durable Object: cached summary + WebSockets
 src/          React status page (Vite)
 shared/       Types shared by the Worker and the frontend
 migrations/   D1 schema
@@ -111,6 +118,7 @@ Public (read-only, no URLs exposed):
 | Method | Path | Returns |
 | --- | --- | --- |
 | GET | `/api/summary` | All monitors with status, uptime, daily buckets, recent incidents |
+| GET (WebSocket) | `/api/live` | Sends the summary on connect and again after every check run. Send `ping` to get `pong`. |
 | GET | `/api/monitors/:id/latency?hours=24` | Individual checks for the latency chart (max 168 h) |
 
 Admin (send `Authorization: Bearer <ADMIN_TOKEN>`):

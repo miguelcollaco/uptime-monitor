@@ -1,31 +1,20 @@
-import { useCallback, useEffect, useState } from "react";
-import type { Incident, PublicMonitor, SummaryResponse } from "../shared/types";
-import { fetchSummary } from "./api";
+import { useEffect, useState } from "react";
+import type { Incident, PublicMonitor } from "../shared/types";
 import { LatencyChart } from "./components/LatencyChart";
 import { UptimeBars } from "./components/UptimeBars";
 import { formatDateTime, formatDuration, formatMs, formatPercent, timeAgo } from "./format";
-
-const REFRESH_MS = 60_000;
+import { useLiveSummary } from "./useLiveSummary";
 
 export default function App() {
-  const [data, setData] = useState<SummaryResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data, error, live } = useLiveSummary();
 
-  const load = useCallback(() => {
-    fetchSummary()
-      .then((d) => {
-        setData(d);
-        setError(null);
-        document.title = d.title;
-      })
-      .catch((e: Error) => setError(e.message));
-  }, []);
-
+  // Updates are pushed only when checks run, so re-render on a timer to keep
+  // the "x min ago" labels current in between.
+  const [, setTick] = useState(0);
   useEffect(() => {
-    load();
-    const id = setInterval(load, REFRESH_MS);
+    const id = setInterval(() => setTick((t) => t + 1), 15_000);
     return () => clearInterval(id);
-  }, [load]);
+  }, []);
 
   if (!data) {
     return (
@@ -40,6 +29,11 @@ export default function App() {
       <header className="header">
         <h1>{data.title}</h1>
         <p className="muted">
+          {live && (
+            <span className="live" title="Updates appear as soon as checks run">
+              <span className="dot dot--up" aria-hidden /> Live ·{" "}
+            </span>
+          )}
           Updated {timeAgo(data.generatedAt)}
           {error && <span className="warn"> · refresh failed, showing last data</span>}
         </p>
@@ -51,13 +45,15 @@ export default function App() {
         {data.monitors.length === 0 ? (
           <p className="muted">No monitors yet. Add some with the seed file or the admin API.</p>
         ) : (
-          data.monitors.map((m) => <MonitorRow key={m.id} monitor={m} days={data.windowDays} />)
+          data.monitors.map((m) => (
+            <MonitorRow key={m.id} monitor={m} days={data.windowDays} updatedAt={data.generatedAt} />
+          ))
         )}
       </section>
 
       <Incidents incidents={data.incidents} />
 
-      <footer className="footer muted">Checks run on Cloudflare Workers · data in D1</footer>
+      <footer className="footer muted">Checks run on Cloudflare Workers · data in D1 · live updates via Durable Objects</footer>
     </main>
   );
 }
@@ -79,7 +75,15 @@ function OverallBanner({ monitors }: { monitors: PublicMonitor[] }) {
   );
 }
 
-function MonitorRow({ monitor: m, days }: { monitor: PublicMonitor; days: number }) {
+function MonitorRow({
+  monitor: m,
+  days,
+  updatedAt,
+}: {
+  monitor: PublicMonitor;
+  days: number;
+  updatedAt: number;
+}) {
   const [open, setOpen] = useState(false);
   const status = m.paused ? "paused" : m.status;
   const statusLabel = { up: "Operational", down: "Down", unknown: "Pending", paused: "Paused" }[status];
@@ -116,7 +120,7 @@ function MonitorRow({ monitor: m, days }: { monitor: PublicMonitor; days: number
         <span>Today</span>
       </div>
 
-      {open && <LatencyChart monitorId={m.id} />}
+      {open && <LatencyChart monitorId={m.id} updatedAt={updatedAt} />}
     </div>
   );
 }

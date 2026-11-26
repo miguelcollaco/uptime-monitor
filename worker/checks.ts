@@ -1,6 +1,7 @@
 import type { Env, MonitorRow } from "./env";
 import { intVar } from "./env";
 import { sendAlert } from "./alerts";
+import { utcDay } from "./summary";
 
 export interface CheckResult {
   monitorId: number;
@@ -84,6 +85,22 @@ export async function runAllChecks(env: Env, now = Date.now()): Promise<CheckRes
       env.DB.prepare(
         "INSERT INTO checks (monitor_id, checked_at, ok, status_code, latency_ms, error) VALUES (?, ?, ?, ?, ?, ?)",
       ).bind(m.id, r.checkedAt, r.ok ? 1 : 0, r.statusCode, r.latencyMs, r.error),
+      // Keep the per-day totals the status page reads in step with the raw checks.
+      env.DB.prepare(
+        `INSERT INTO daily_stats (monitor_id, day, total, ok, latency_sum, latency_count)
+         VALUES (?, ?, 1, ?, ?, ?)
+         ON CONFLICT (monitor_id, day) DO UPDATE SET
+           total = total + 1,
+           ok = ok + excluded.ok,
+           latency_sum = latency_sum + excluded.latency_sum,
+           latency_count = latency_count + excluded.latency_count`,
+      ).bind(
+        m.id,
+        utcDay(r.checkedAt),
+        r.ok ? 1 : 0,
+        r.latencyMs ?? 0,
+        r.latencyMs === null ? 0 : 1,
+      ),
     );
 
     let status = m.status;
@@ -131,8 +148,11 @@ export async function runAllChecks(env: Env, now = Date.now()): Promise<CheckRes
   // Once a day (the run that lands in 03:00–03:04 UTC), drop old check rows.
   const d = new Date(now);
   if (d.getUTCHours() === 3 && d.getUTCMinutes() < 5) {
-    const retentionMs = intVar(env.RETENTION_DAYS, 90) * 24 * 60 * 60 * 1000;
-    await env.DB.prepare("DELETE FROM checks WHERE checked_at < ?").bind(now - retentionMs).run();
+    const cutoff = now - intVar(env.RETENTION_DAYS, 90) * 24 * 60 * 60 * 1000;
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM checks WHERE checked_at < ?").bind(cutoff),
+      env.DB.prepare("DELETE FROM daily_stats WHERE day < ?").bind(utcDay(cutoff)),
+    ]);
   }
 
   return results;
