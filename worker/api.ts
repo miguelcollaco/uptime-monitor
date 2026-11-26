@@ -1,9 +1,10 @@
-import type { LatencyResponse } from "../shared/types";
+import type { LatencyResponse, RegionSeries } from "../shared/types";
 import type { Env, MonitorRow } from "./env";
 import { intVar } from "./env";
 import { runAllChecks } from "./checks";
 import { connectLive, getLiveSummary, publishSummary } from "./live";
 import { isAuthorized, login, logout } from "./auth";
+import { regionName, regionOrder } from "./regions";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -65,18 +66,42 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
 
 async function getLatency(env: Env, monitorId: number, hours: number): Promise<LatencyResponse> {
   const since = Date.now() - hours * HOUR_MS;
-  const { results } = await env.DB.prepare(
-    `SELECT checked_at, latency_ms, ok FROM checks
-      WHERE monitor_id = ? AND checked_at >= ?
-      ORDER BY checked_at`,
-  )
-    .bind(monitorId, since)
-    .all<{ checked_at: number; latency_ms: number | null; ok: number }>();
+  type Row = { checked_at: number; latency_ms: number | null; ok: number };
+  type RegionRow = Row & { region: string; colo: string | null };
+
+  const [combined, perRegion] = await env.DB.batch([
+    env.DB.prepare(
+      `SELECT checked_at, latency_ms, ok FROM checks
+        WHERE monitor_id = ? AND checked_at >= ?
+        ORDER BY checked_at`,
+    ).bind(monitorId, since),
+    env.DB.prepare(
+      `SELECT checked_at, latency_ms, ok, region, colo FROM region_checks
+        WHERE monitor_id = ? AND checked_at >= ?
+        ORDER BY checked_at`,
+    ).bind(monitorId, since),
+  ]);
+
+  const toPoint = (r: Row) => ({ t: r.checked_at, latencyMs: r.latency_ms, ok: r.ok === 1 });
+
+  const series = new Map<string, RegionSeries>();
+  for (const r of perRegion.results as RegionRow[]) {
+    let s = series.get(r.region);
+    if (!s) {
+      s = { region: r.region, name: regionName(r.region), colo: null, points: [] };
+      series.set(r.region, s);
+    }
+    s.points.push(toPoint(r));
+    // Rows are oldest first, so this ends up as the latest known datacenter.
+    if (r.colo) s.colo = r.colo;
+  }
+  const order = regionOrder(env);
 
   return {
     monitorId,
     hours,
-    points: results.map((r) => ({ t: r.checked_at, latencyMs: r.latency_ms, ok: r.ok === 1 })),
+    points: (combined.results as Row[]).map(toPoint),
+    regions: [...series.values()].sort((a, b) => order(a.region) - order(b.region)),
   };
 }
 
@@ -192,6 +217,7 @@ async function handleAdmin(request: Request, env: Env, sub: string): Promise<Res
       await env.DB.batch([
         env.DB.prepare("DELETE FROM checks WHERE monitor_id = ?").bind(id),
         env.DB.prepare("DELETE FROM daily_stats WHERE monitor_id = ?").bind(id),
+        env.DB.prepare("DELETE FROM region_checks WHERE monitor_id = ?").bind(id),
         env.DB.prepare("DELETE FROM incidents WHERE monitor_id = ?").bind(id),
         env.DB.prepare("DELETE FROM monitors WHERE id = ?").bind(id),
       ]);

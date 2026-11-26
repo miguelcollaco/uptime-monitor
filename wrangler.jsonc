@@ -28,12 +28,19 @@
     }
   ],
 
-  // Holds the latest summary and the WebSocket of every open status page.
+  // LiveStatus: holds the latest summary and the WebSocket of every open status page.
+  // RegionChecker: one instance per region in REGIONS, placed with a location hint.
   // SQLite-backed Durable Objects are included in the Workers Free plan.
   "durable_objects": {
-    "bindings": [{ "name": "LIVE", "class_name": "LiveStatus" }]
+    "bindings": [
+      { "name": "LIVE", "class_name": "LiveStatus" },
+      { "name": "CHECKER", "class_name": "RegionChecker" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["LiveStatus"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["LiveStatus"] },
+    { "tag": "v2", "new_sqlite_classes": ["RegionChecker"] }
+  ],
 
   "vars": {
     // Title shown on the status page
@@ -41,7 +48,11 @@
     // How many failed checks in a row before a monitor is marked down and an alert is sent
     "FAILURE_THRESHOLD": "2",
     // How long to keep individual check results
-    "RETENTION_DAYS": "90"
+    "RETENTION_DAYS": "90",
+    // Where checks run from (Durable Object location hints). A monitor counts as
+    // failing only when most of these regions fail. Options: wnam, enam, sam,
+    // weur, eeur, apac, oc, afr, me
+    "REGIONS": "weur,enam,apac"
   },
 
   // Secrets (set with `pnpm wrangler secret put <NAME>`, never committed):

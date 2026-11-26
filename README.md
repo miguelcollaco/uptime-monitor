@@ -3,9 +3,10 @@
 A small, self-hosted uptime monitor that runs entirely on Cloudflare's free tier:
 
 - **Cron Trigger** runs HTTP checks against your sites every 5 minutes
+- **Multi-region checks** from Europe, US East and Asia-Pacific: a site only counts as down when most regions agree, so one region's network trouble doesn't cause false alarms
 - **D1** (SQLite) stores every check, each monitor's state and an incident log
 - **Discord or Slack alerts** fire when a site goes down and when it recovers
-- **React + Vite status page** shows 90-day uptime bars, 24 h response times and recent incidents
+- **React + Vite status page** shows 90-day uptime bars, 24 h response times per region and recent incidents
 - **Admin page** at `/admin` to add, edit, pause and delete monitors, behind a password login
 - **Live updates** over WebSockets through a Durable Object: open pages change as soon as checks run, no refresh needed
 - Everything is **one Worker**, deployed with one command
@@ -15,10 +16,13 @@ A small, self-hosted uptime monitor that runs entirely on Cloudflare's free tier
 ## How it works
 
 ```
-             every 5 min                      HTTP checks
- Cron Trigger ──────────► Worker.scheduled() ───────────► your sites
+             every 5 min                    in parallel                 HTTP checks
+ Cron Trigger ──────────► Worker.scheduled() ──┬─► RegionChecker "weur" ─┐
+                               │               ├─► RegionChecker "enam" ─┼─► your sites
+                               │               └─► RegionChecker "apac" ─┘
                                │
-                               ├─ store results ────────► D1: checks, daily_stats
+                               ├─ majority vote per monitor (results come back from every region)
+                               ├─ store results ────────► D1: checks, daily_stats, region_checks
                                ├─ update state / incidents ► D1: monitors, incidents
                                ├─ on state change ──────► Discord / Slack webhook
                                └─ publish ──────────────► LiveStatus Durable Object
@@ -30,10 +34,12 @@ A small, self-hosted uptime monitor that runs entirely on Cloudflare's free tier
                └─ else      ──► React status page (static assets)
 ```
 
-- A monitor is marked **down** only after `FAILURE_THRESHOLD` failed checks in a row (default 2), so one blip doesn't page you. One alert goes out when it goes down and one when it recovers.
+- **Regions:** each region in `REGIONS` has a `RegionChecker` Durable Object created with that region as its location hint. A Durable Object stays where it was created, so its checks always leave from the same part of the world. Location hints are best-effort, so each check also records the datacenter it actually ran from (e.g. `FRA`).
+- **Majority vote:** every run checks each monitor from all regions at once. The run counts as failed only when more than half of the regions that answered saw it fail; its latency is the median of the regions that succeeded. If no region answers at all, the Worker checks from wherever it's running so monitoring never stops.
+- A monitor is marked **down** only after `FAILURE_THRESHOLD` failed runs in a row (default 2), so one blip doesn't page you. One alert goes out when it goes down (naming the regions that failed, e.g. "Down in 2/3 regions (Europe, US East): Timed out after 10000 ms") and one when it recovers.
 - A check fails on timeout (default 10 s), network error, or a status outside the expected range (default 200–399). Latency is measured to the response headers.
-- Check rows older than `RETENTION_DAYS` (default 90) are deleted once a day.
-- **Staying in the free tier:** each check also updates a per-day row in `daily_stats`, so building the summary reads about 90 rows per monitor for the uptime bars instead of every check in the window. The `LiveStatus` Durable Object builds the summary once per cron run and serves it to every viewer, so D1 reads don't grow with traffic. Its WebSockets use the Hibernation API, so idle connections cost nothing. If the socket drops, the page polls `/api/summary` every 30 s and keeps reconnecting.
+- Check rows older than `RETENTION_DAYS` (default 90) are deleted once a day. Per-region rows (`region_checks`) are kept for 7 days, which is as far back as the latency chart goes.
+- **Staying in the free tier:** each check also updates a per-day row in `daily_stats`, so building the summary reads about 90 rows per monitor for the uptime bars instead of every check in the window. The `LiveStatus` Durable Object builds the summary once per cron run and serves it to every viewer, so D1 reads don't grow with traffic. Its WebSockets use the Hibernation API, so idle connections cost nothing. If the socket drops, the page polls `/api/summary` every 30 s and keeps reconnecting. Three regions add about 900 Durable Object requests a day and triple the D1 writes for checks, both far below the free limits.
 
 ## Project layout
 
@@ -41,6 +47,7 @@ A small, self-hosted uptime monitor that runs entirely on Cloudflare's free tier
 worker/       Cloudflare Worker (TypeScript)
   index.ts      fetch + scheduled handlers
   checks.ts     HTTP checks, state machine, incidents
+  regions.ts    RegionChecker Durable Object and the majority vote
   alerts.ts     Discord / Slack webhook
   api.ts        public JSON API + admin API
   auth.ts       admin login: password check, signed session cookie, lockout
@@ -106,6 +113,7 @@ In `wrangler.jsonc`:
 | `vars.SITE_TITLE` | `Status` | Title on the status page |
 | `vars.FAILURE_THRESHOLD` | `2` | Failed checks in a row before "down" + alert |
 | `vars.RETENTION_DAYS` | `90` | How long check history is kept (and the bar chart window) |
+| `vars.REGIONS` | `weur,enam,apac` | Where checks run from. Any of `wnam` (US West), `enam` (US East), `sam` (South America), `weur` (Europe), `eeur` (Eastern Europe), `apac` (Asia-Pacific), `oc` (Oceania), `afr` (Africa), `me` (Middle East). An odd number avoids ties; a tie counts as up. |
 
 Secrets (`pnpm wrangler secret put <NAME>`):
 
@@ -122,7 +130,7 @@ Read-only. Monitor URLs aren't exposed:
 | --- | --- | --- |
 | GET | `/api/summary` | All monitors with status, uptime, daily buckets, recent incidents |
 | GET (WebSocket) | `/api/live` | Sends the summary on connect and again after every check run. Send `ping` to get `pong`. |
-| GET | `/api/monitors/:id/latency?hours=24` | Individual checks for the latency chart (max 168 h) |
+| GET | `/api/monitors/:id/latency?hours=24` | Each run's combined result plus each region's own checks, for the latency chart (max 168 h) |
 
 ## Admin page
 
@@ -158,5 +166,5 @@ curl -X POST https://uptime-monitor.<you>.workers.dev/api/admin/monitors \
 
 ## Ideas for next steps
 
-- **Multi-region checks:** run checkers in Durable Objects with location hints (e.g. Western Europe, US East, Asia) and only mark a site down when several regions agree. That avoids false alarms from one region's network.
+- **Regional alerts:** a lighter "degraded" alert when a minority of regions keeps failing (the status page already shows it).
 - **Keyword checks** (the page must contain a string) and TCP checks via the Workers `connect()` API.

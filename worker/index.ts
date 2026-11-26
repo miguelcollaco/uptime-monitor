@@ -5,6 +5,7 @@ import { publishSummary } from "./live";
 
 // Durable Object classes must be exported from the Worker's entry module.
 export { LiveStatus } from "./live";
+export { RegionChecker } from "./regions";
 
 export default {
   // HTTP: JSON API under /api/*, everything else is the React status page.

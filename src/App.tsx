@@ -87,6 +87,8 @@ function MonitorRow({
   const [open, setOpen] = useState(false);
   const status = m.paused ? "paused" : m.status;
   const statusLabel = { up: "Operational", down: "Down", unknown: "Pending", paused: "Paused" }[status];
+  // Up overall (most regions fine), but some regions saw it fail in the latest run.
+  const failingIn = status === "up" ? m.regions.filter((r) => !r.ok).map((r) => r.name) : [];
 
   return (
     <div className="monitor">
@@ -116,6 +118,7 @@ function MonitorRow({
         <span>
           24 h: {formatPercent(m.uptime24h)} · avg {formatMs(m.avgLatency24hMs)} · checked{" "}
           {timeAgo(m.lastCheckedAt)}
+          {failingIn.length > 0 && <span className="warn"> · ✗ failing in {failingIn.join(", ")}</span>}
         </span>
         <span>Today</span>
       </div>

@@ -1,6 +1,13 @@
-import type { DailyBucket, Incident, PublicMonitor, SummaryResponse } from "../shared/types";
+import type {
+  DailyBucket,
+  Incident,
+  PublicMonitor,
+  RegionStatus,
+  SummaryResponse,
+} from "../shared/types";
 import type { Env, MonitorRow } from "./env";
 import { intVar } from "./env";
+import { regionName, regionOrder } from "./regions";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -12,8 +19,9 @@ export function utcDay(ts: number): string {
 /**
  * Build the public status summary from D1.
  *
- * Reads about (90 + 288) rows per monitor: one daily_stats row per day in the
- * window, plus the raw checks of the last 24 hours. The LiveStatus Durable
+ * Reads about (90 + 288 + regions) rows per monitor: one daily_stats row per
+ * day in the window, the combined checks of the last 24 hours, and each
+ * region's result from the latest run. The LiveStatus Durable
  * Object calls this once per cron run and serves the result to every viewer.
  */
 export async function buildSummary(env: Env): Promise<SummaryResponse> {
@@ -22,7 +30,7 @@ export async function buildSummary(env: Env): Promise<SummaryResponse> {
   // The page shows one bar per day: today plus the (windowDays - 1) days before it.
   const firstDay = utcDay(now - (windowDays - 1) * DAY_MS);
 
-  const [monitorsRes, dailyRes, recentRes, incidentsRes] = await env.DB.batch([
+  const [monitorsRes, dailyRes, recentRes, incidentsRes, regionsRes] = await env.DB.batch([
     env.DB.prepare(
       "SELECT id, name, status, paused, last_checked_at FROM monitors ORDER BY name COLLATE NOCASE",
     ),
@@ -46,6 +54,12 @@ export async function buildSummary(env: Env): Promise<SummaryResponse> {
          FROM incidents i JOIN monitors m ON m.id = i.monitor_id
         ORDER BY i.started_at DESC
         LIMIT 20`,
+    ),
+    // Each region's result from the latest run of every monitor.
+    env.DB.prepare(
+      `SELECT rc.monitor_id, rc.region, rc.colo, rc.ok, rc.latency_ms
+         FROM region_checks rc
+         JOIN monitors m ON m.id = rc.monitor_id AND rc.checked_at = m.last_checked_at`,
     ),
   ]);
 
@@ -80,6 +94,30 @@ export async function buildSummary(env: Env): Promise<SummaryResponse> {
     dailyByMonitor.set(row.monitor_id, list);
   }
 
+  type RegionRow = {
+    monitor_id: number;
+    region: string;
+    colo: string | null;
+    ok: number;
+    latency_ms: number | null;
+  };
+  const order = regionOrder(env);
+  const regionsByMonitor = new Map<number, RegionStatus[]>();
+  for (const row of regionsRes.results as RegionRow[]) {
+    const list = regionsByMonitor.get(row.monitor_id) ?? [];
+    list.push({
+      region: row.region,
+      name: regionName(row.region),
+      colo: row.colo,
+      ok: row.ok === 1,
+      latencyMs: row.latency_ms,
+    });
+    regionsByMonitor.set(row.monitor_id, list);
+  }
+  for (const list of regionsByMonitor.values()) {
+    list.sort((a, b) => order(a.region) - order(b.region));
+  }
+
   const recentByMonitor = new Map<number, RecentRow>();
   for (const row of recentRes.results as RecentRow[]) recentByMonitor.set(row.monitor_id, row);
 
@@ -98,6 +136,7 @@ export async function buildSummary(env: Env): Promise<SummaryResponse> {
       uptimeWindow: windowTotal > 0 ? windowOk / windowTotal : null,
       avgLatency24hMs: recent?.avg_latency ?? null,
       daily,
+      regions: regionsByMonitor.get(m.id) ?? [],
     };
   });
 

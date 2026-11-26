@@ -27,6 +27,18 @@ export interface DailyBucket {
   avgLatencyMs: number | null;
 }
 
+/** One region's result from the latest check run. */
+export interface RegionStatus {
+  /** Durable Object location hint, e.g. "weur" */
+  region: string;
+  /** Display name, e.g. "Europe" */
+  name: string;
+  /** Datacenter the check ran from, e.g. "FRA", if known */
+  colo: string | null;
+  ok: boolean;
+  latencyMs: number | null;
+}
+
 export interface PublicMonitor {
   id: number;
   name: string;
@@ -39,6 +51,8 @@ export interface PublicMonitor {
   uptimeWindow: number | null;
   avgLatency24hMs: number | null;
   daily: DailyBucket[];
+  /** Each region's view in the latest run, in the configured region order */
+  regions: RegionStatus[];
 }
 
 export interface Incident {
@@ -64,8 +78,19 @@ export interface LatencyPoint {
   ok: boolean;
 }
 
+export interface RegionSeries {
+  region: string;
+  name: string;
+  /** Datacenter of the most recent check from this region, if known */
+  colo: string | null;
+  points: LatencyPoint[];
+}
+
 export interface LatencyResponse {
   monitorId: number;
   hours: number;
+  /** Combined result per run: latency is the median of the regions that succeeded */
   points: LatencyPoint[];
+  /** Each region's own checks, in the configured region order */
+  regions: RegionSeries[];
 }
