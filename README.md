@@ -11,7 +11,9 @@ A small, self-hosted uptime monitor that runs entirely on Cloudflare's free tier
 - **Live updates** over WebSockets through a Durable Object: open pages change as soon as checks run, no refresh needed
 - Everything is **one Worker**, deployed with one command
 
-![Status page](docs/screenshot.png)
+![Status page showing three monitors, per-region latency and recent incidents](docs/screenshot.png)
+
+<sub>Screenshot uses sample data.</sub>
 
 ## How it works
 
