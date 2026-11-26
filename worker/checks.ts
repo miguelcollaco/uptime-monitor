@@ -2,6 +2,7 @@ import type { Env, MonitorRow } from "./env";
 import { intVar } from "./env";
 import { sendAlert } from "./alerts";
 import { utcDay } from "./summary";
+import { LOCKOUT_MS } from "./auth";
 
 export interface CheckResult {
   monitorId: number;
@@ -152,6 +153,7 @@ export async function runAllChecks(env: Env, now = Date.now()): Promise<CheckRes
     await env.DB.batch([
       env.DB.prepare("DELETE FROM checks WHERE checked_at < ?").bind(cutoff),
       env.DB.prepare("DELETE FROM daily_stats WHERE day < ?").bind(utcDay(cutoff)),
+      env.DB.prepare("DELETE FROM login_failures WHERE at < ?").bind(now - LOCKOUT_MS),
     ]);
   }
 

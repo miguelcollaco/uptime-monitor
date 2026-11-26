@@ -2,6 +2,23 @@
 
 export type MonitorStatus = "up" | "down" | "unknown";
 
+/** A row of the `monitors` table, as returned by the admin API. */
+export interface MonitorRow {
+  id: number;
+  name: string;
+  url: string;
+  method: string;
+  timeout_ms: number;
+  expected_status_min: number;
+  expected_status_max: number;
+  /** 1 or 0 (SQLite has no boolean) */
+  paused: number;
+  status: MonitorStatus;
+  consecutive_failures: number;
+  last_checked_at: number | null;
+  created_at: number;
+}
+
 export interface DailyBucket {
   /** UTC day, YYYY-MM-DD */
   day: string;

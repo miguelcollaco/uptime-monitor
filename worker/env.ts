@@ -14,21 +14,8 @@ export interface Env {
   ADMIN_TOKEN?: string;
 }
 
-/** Row shape of the `monitors` table. */
-export interface MonitorRow {
-  id: number;
-  name: string;
-  url: string;
-  method: string;
-  timeout_ms: number;
-  expected_status_min: number;
-  expected_status_max: number;
-  paused: number;
-  status: "up" | "down" | "unknown";
-  consecutive_failures: number;
-  last_checked_at: number | null;
-  created_at: number;
-}
+/** Row shape of the `monitors` table, shared with the admin page. */
+export type { MonitorRow } from "../shared/types";
 
 export function intVar(value: string | undefined, fallback: number): number {
   const n = Number.parseInt(value ?? "", 10);

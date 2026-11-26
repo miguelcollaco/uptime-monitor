@@ -3,6 +3,7 @@ import type { Env, MonitorRow } from "./env";
 import { intVar } from "./env";
 import { runAllChecks } from "./checks";
 import { connectLive, getLiveSummary, publishSummary } from "./live";
+import { isAuthorized, login, logout } from "./auth";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -22,7 +23,11 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
 
   try {
     if (path.startsWith("/api/admin/")) {
-      const res = await handleAdmin(request, env, path.slice("/api/admin".length));
+      const sub = path.slice("/api/admin".length);
+      if (sub === "/login" && request.method === "POST") return await login(request, env);
+      if (sub === "/logout" && request.method === "POST") return logout(request);
+
+      const res = await handleAdmin(request, env, sub);
       // Any successful change to monitors shows up on open status pages right away.
       if (res.ok && request.method !== "GET") await publishSummary(env);
       return res;
@@ -75,21 +80,7 @@ async function getLatency(env: Env, monitorId: number, hours: number): Promise<L
   };
 }
 
-// ---------- Admin API (Bearer ADMIN_TOKEN) ----------
-
-async function isAuthorized(request: Request, env: Env): Promise<boolean> {
-  const token = env.ADMIN_TOKEN;
-  if (!token) return false;
-  const header = request.headers.get("authorization") ?? "";
-  const given = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const enc = new TextEncoder();
-  // Hash both sides so the comparison is constant-time and length-independent.
-  const [a, b] = await Promise.all([
-    crypto.subtle.digest("SHA-256", enc.encode(given)),
-    crypto.subtle.digest("SHA-256", enc.encode(token)),
-  ]);
-  return crypto.subtle.timingSafeEqual(a, b);
-}
+// ---------- Admin API (Bearer ADMIN_TOKEN or the /admin page's session cookie) ----------
 
 interface MonitorInput {
   name?: unknown;
@@ -104,16 +95,25 @@ interface MonitorInput {
 function validateUrl(value: unknown): string | null {
   if (typeof value !== "string") return null;
   try {
-    const u = new URL(value);
+    const u = new URL(value.trim());
     return u.protocol === "http:" || u.protocol === "https:" ? u.toString() : null;
   } catch {
     return null;
   }
 }
 
+function validateMethod(value: unknown): "GET" | "HEAD" | null {
+  return value === "GET" || value === "HEAD" ? value : null;
+}
+
 async function handleAdmin(request: Request, env: Env, sub: string): Promise<Response> {
-  if (!env.ADMIN_TOKEN) return error(404, "Admin API disabled: set the ADMIN_TOKEN secret");
+  if (!env.ADMIN_TOKEN) return error(404, "Admin is disabled: set the ADMIN_TOKEN secret");
   if (!(await isAuthorized(request, env))) return error(401, "Unauthorized");
+
+  // GET /api/admin/session  -> lets the admin page check whether it's logged in
+  if (sub === "/session" && request.method === "GET") {
+    return json({ ok: true });
+  }
 
   // POST /api/admin/run  -> run all checks now
   if (sub === "/run" && request.method === "POST") {
@@ -123,7 +123,9 @@ async function handleAdmin(request: Request, env: Env, sub: string): Promise<Res
 
   // GET /api/admin/monitors  -> list with URLs
   if (sub === "/monitors" && request.method === "GET") {
-    const { results } = await env.DB.prepare("SELECT * FROM monitors ORDER BY id").all<MonitorRow>();
+    const { results } = await env.DB.prepare(
+      "SELECT * FROM monitors ORDER BY name COLLATE NOCASE",
+    ).all<MonitorRow>();
     return json(results);
   }
 
@@ -135,10 +137,11 @@ async function handleAdmin(request: Request, env: Env, sub: string): Promise<Res
     const url = validateUrl(body.url);
     if (!name) return error(400, "name is required");
     if (!url) return error(400, "url must be an http(s) URL");
-    const method = body.method === "HEAD" ? "HEAD" : "GET";
+    const method = body.method === undefined ? "GET" : validateMethod(body.method);
+    if (!method) return error(400, "method must be GET or HEAD");
     const timeout = clampInt(body.timeout_ms, 1000, 30000, 10000);
     const min = clampInt(body.expected_status_min, 100, 599, 200);
-    const max = clampInt(body.expected_status_max, min, 599, 399);
+    const max = clampInt(body.expected_status_max, min, 599, Math.max(min, 399));
     const row = await env.DB.prepare(
       `INSERT INTO monitors (name, url, method, timeout_ms, expected_status_min, expected_status_max, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *`,
@@ -152,35 +155,33 @@ async function handleAdmin(request: Request, env: Env, sub: string): Promise<Res
   if (idMatch) {
     const id = Number(idMatch[1]);
 
-    // PATCH /api/admin/monitors/:id  -> update name/url/paused/...
+    // PATCH /api/admin/monitors/:id  -> update any of the fields; others keep their value
     if (request.method === "PATCH") {
       const body = (await request.json().catch(() => null)) as MonitorInput | null;
       if (!body) return error(400, "Expected a JSON body");
-      const sets: string[] = [];
-      const values: unknown[] = [];
-      if (typeof body.name === "string" && body.name.trim()) {
-        sets.push("name = ?");
-        values.push(body.name.trim());
-      }
-      if (body.url !== undefined) {
-        const url = validateUrl(body.url);
-        if (!url) return error(400, "url must be an http(s) URL");
-        sets.push("url = ?");
-        values.push(url);
-      }
-      if (typeof body.paused === "boolean") {
-        sets.push("paused = ?");
-        values.push(body.paused ? 1 : 0);
-      }
-      if (body.timeout_ms !== undefined) {
-        sets.push("timeout_ms = ?");
-        values.push(clampInt(body.timeout_ms, 1000, 30000, 10000));
-      }
-      if (sets.length === 0) return error(400, "Nothing to update");
+      const current = await env.DB.prepare("SELECT * FROM monitors WHERE id = ?")
+        .bind(id)
+        .first<MonitorRow>();
+      if (!current) return error(404, "Monitor not found");
+
+      const name = body.name === undefined ? current.name : String(body.name).trim();
+      if (!name) return error(400, "name can't be empty");
+      const url = body.url === undefined ? current.url : validateUrl(body.url);
+      if (!url) return error(400, "url must be an http(s) URL");
+      const method = body.method === undefined ? current.method : validateMethod(body.method);
+      if (!method) return error(400, "method must be GET or HEAD");
+      const timeout = clampInt(body.timeout_ms, 1000, 30000, current.timeout_ms);
+      const min = clampInt(body.expected_status_min, 100, 599, current.expected_status_min);
+      const max = clampInt(body.expected_status_max, min, 599, Math.max(min, current.expected_status_max));
+      const paused = typeof body.paused === "boolean" ? (body.paused ? 1 : 0) : current.paused;
+
       const row = await env.DB.prepare(
-        `UPDATE monitors SET ${sets.join(", ")} WHERE id = ? RETURNING *`,
+        `UPDATE monitors
+            SET name = ?, url = ?, method = ?, timeout_ms = ?,
+                expected_status_min = ?, expected_status_max = ?, paused = ?
+          WHERE id = ? RETURNING *`,
       )
-        .bind(...values, id)
+        .bind(name, url, method, timeout, min, max, paused, id)
         .first<MonitorRow>();
       return row ? json(row) : error(404, "Monitor not found");
     }
