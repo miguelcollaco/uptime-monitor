@@ -1,6 +1,6 @@
 # Uptime Monitor
 
-**Live:** [uptime-monitor.miguel-l-collaco.workers.dev](https://uptime-monitor.miguel-l-collaco.workers.dev)
+**Live:** [uptime.miguelcollaco.com](https://uptime.miguelcollaco.com)
 
 A small, self-hosted uptime monitor that runs entirely on Cloudflare's free tier:
 
